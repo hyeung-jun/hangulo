@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Config {
     api_key: Option<String>,
 }
@@ -33,4 +33,17 @@ pub fn load_api_key() -> Option<String> {
     let key = config.api_key?;
     let key = key.trim();
     (!key.is_empty()).then(|| key.to_string())
+}
+
+/// 설정 창에서 입력한 DeepL 키를 config.json 에 저장한다.
+pub fn save_api_key(key: &str) -> Result<(), String> {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    let config = Config {
+        api_key: Some(key.trim().to_string()),
+    };
+    let contents = serde_json::to_string(&config).map_err(|err| err.to_string())?;
+    std::fs::write(&path, contents).map_err(|err| err.to_string())
 }

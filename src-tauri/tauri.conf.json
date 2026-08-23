@@ -26,6 +26,16 @@
         "focus": false,
         "visible": false,
         "shadow": false
+      },
+      {
+        "label": "settings",
+        "title": "hangulo 설정",
+        "url": "settings.html",
+        "width": 320,
+        "height": 160,
+        "resizable": false,
+        "center": true,
+        "visible": false
       }
     ],
     "security": {

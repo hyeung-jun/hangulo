@@ -7,6 +7,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
+    Manager,
 };
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -15,6 +16,24 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+fn get_api_key() -> Option<String> {
+    config::load_api_key()
+}
+
+#[tauri::command]
+fn save_api_key(key: String) -> Result<(), String> {
+    config::save_api_key(&key)
+}
+
+fn open_settings_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = app.show();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 /// 단축키를 누를 때마다 하나씩 늘어난다. 요청이 끝났을 때 이 값이 자기 번호와
@@ -117,8 +136,18 @@ pub fn run() {
                 .build(),
         )
         .manage(popup::PopupState::default())
+        .on_window_event(|window, event| {
+            if window.label() == "settings" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
+            get_api_key,
+            save_api_key,
             popup::popup_content_ready,
             popup::popup_save_position,
             popup::popup_hide,
@@ -137,11 +166,14 @@ pub fn run() {
             app.global_shortcut().register(hotkey)?;
 
             let translate_item = MenuItem::with_id(app, "translate", "번역", true, None::<&str>)?;
+            let settings_item =
+                MenuItem::with_id(app, "settings", "API 키 설정...", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
                 &[
                     &translate_item,
+                    &settings_item,
                     &PredefinedMenuItem::separator(app)?,
                     &quit_item,
                 ],
@@ -156,6 +188,7 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
                     "translate" => on_hotkey(app),
+                    "settings" => open_settings_window(app),
                     _ => {}
                 })
                 .build(app)?;
