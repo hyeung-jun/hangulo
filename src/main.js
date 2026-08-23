@@ -104,14 +104,29 @@ grip.addEventListener("mousedown", (event) => {
   const startWidth = windowEl.getBoundingClientRect().width;
   const startHeight = windowEl.getBoundingClientRect().height;
 
+  let pendingSize = null;
+  let rafId = null;
+
+  const flush = () => {
+    rafId = null;
+    if (pendingSize) invoke("popup_resize", pendingSize);
+  };
+
   const onMove = (moveEvent) => {
     const width = Math.max(240, startWidth + (moveEvent.screenX - startX));
     const height = Math.max(80, startHeight + (moveEvent.screenY - startY));
-    invoke("popup_resize", { width, height });
+    pendingSize = { width, height };
+    if (rafId === null) {
+      rafId = requestAnimationFrame(flush);
+    }
   };
   const onUp = () => {
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      flush();
+    }
     invoke("popup_save_position");
   };
   document.addEventListener("mousemove", onMove);

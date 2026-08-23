@@ -42,11 +42,19 @@ fn on_hotkey(app: &tauri::AppHandle) {
         platform::macos::copy_selection();
         let app = app.clone();
         std::thread::spawn(move || {
+            let mut copied = false;
             for _ in 0..COPY_POLL_ATTEMPTS {
                 std::thread::sleep(std::time::Duration::from_millis(COPY_POLL_INTERVAL_MS));
                 if platform::macos::clipboard_change_count() != before {
+                    copied = true;
                     break;
                 }
+            }
+            if !copied {
+                if is_latest() {
+                    popup::emit_error(&app, "선택하거나 복사한 텍스트가 없습니다");
+                }
+                return;
             }
             let text = match app.clipboard().read_text() {
                 Ok(text) if !text.trim().is_empty() => text,
