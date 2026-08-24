@@ -7,7 +7,7 @@
 | | macOS | Windows |
 |---|---|---|
 | 단축키 | `⌘⌥T` | `Ctrl+Alt+T` |
-| 배포 형식 | `.app` / `.dmg` | `.msi` / `.exe` |
+| 배포 형식 | `.app` / `.dmg` | `.exe` (NSIS) |
 
 ## 쓰는 법
 
@@ -44,10 +44,12 @@ git tag v0.1.0 && git push origin v0.1.0
 **2단계 — 인스톨러 받기**
 
 빌드가 끝나면 그 실행 화면 맨 아래 **Artifacts** 에 `hangulo-windows-installer` 가 생긴다.
-받아서 압축을 풀면 두 가지가 들어 있다.
+받아서 압축을 풀면 NSIS 인스톨러 `.exe` 가 들어 있다. WebView2 가 없는 PC 라면 설치 중에
+알아서 받아서 깔아 준다.
 
-- **`.exe` (NSIS)** — 보통 이걸 쓰면 된다. WebView2 가 없는 PC 라면 알아서 받아서 깔아 준다.
-- **`.msi` (WiX)** — 그룹 정책으로 여러 대에 밀어 넣는 식의 배포용.
+> MSI 는 만들지 않는다. WiX 3 의 `light.exe` 가 `한글로_0.1.0_x64_en-US.msi` 같은 한글
+> 파일명을 처리하지 못해 번들링에서 깨지기 때문이다. 그룹 정책 배포용으로 MSI 가 꼭 필요하면
+> `productName` 을 ASCII 로 되돌리고 `bundle.targets` 에 `"msi"` 를 다시 넣어야 한다.
 
 > 저장소가 비공개라 아티팩트를 받으려면 GitHub 에 로그인돼 있어야 한다.
 > 아티팩트는 90일 뒤 자동으로 지워지니, 오래 보관하려면 따로 저장해 두는 게 좋다.
