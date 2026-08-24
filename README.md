@@ -1,7 +1,93 @@
-# Tauri + Vanilla
+# 한글로 (hangulo)
 
-This template should help get you started developing with Tauri in vanilla HTML, CSS and Javascript.
+트레이에 상주하다가 전역 단축키를 누르면, 지금 선택해 둔 텍스트를 집어다 DeepL 로 번역해
+커서 옆에 작은 팝업으로 띄워 주는 앱이다. 한글이 섞여 있으면 영어로, 아니면 한국어로
+번역 방향을 알아서 정한다.
 
-## Recommended IDE Setup
+| | macOS | Windows |
+|---|---|---|
+| 단축키 | `⌘⌥T` | `Ctrl+Alt+T` |
+| 배포 형식 | `.app` / `.dmg` | `.msi` / `.exe` |
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## 쓰는 법
+
+1. 아무 앱에서나 번역할 텍스트를 드래그해 선택한다.
+2. 단축키를 누른다. (트레이 아이콘 → "번역" 도 같다)
+3. 커서 옆에 팝업이 뜬다. 팝업은 드래그해 옮기고 오른쪽 아래 그립으로 크기를 바꿀 수 있다.
+
+## 설치
+
+### macOS
+
+`npm run tauri build` 로 만든 `.dmg` 를 열어 앱을 옮기면 된다.
+
+처음 실행하면 **손쉬운 사용(Accessibility) 권한**을 요청한다. 이 앱은 Cmd+C 를 대신
+눌러 주는 방식으로 선택 영역을 가져오기 때문에, 권한을 주지 않으면 번역할 텍스트를
+읽지 못한다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 켜 주면 된다.
+
+### Windows
+
+Windows 배포판은 macOS 에서 만들 수 없어서 GitHub Actions 가 대신 빌드한다.
+(MSVC 툴체인과 WebView2 SDK 가 필요한데 macOS 에는 없다.)
+
+**1단계 — 빌드 돌리기**
+
+저장소의 **Actions** 탭 → 왼쪽에서 **Windows 배포판 빌드** → 오른쪽 **Run workflow**
+버튼을 누른다. 10분 안팎 걸린다.
+
+`v0.1.0` 처럼 `v` 로 시작하는 태그를 push 해도 같은 빌드가 자동으로 돈다.
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+**2단계 — 인스톨러 받기**
+
+빌드가 끝나면 그 실행 화면 맨 아래 **Artifacts** 에 `hangulo-windows-installer` 가 생긴다.
+받아서 압축을 풀면 두 가지가 들어 있다.
+
+- **`.exe` (NSIS)** — 보통 이걸 쓰면 된다. WebView2 가 없는 PC 라면 알아서 받아서 깔아 준다.
+- **`.msi` (WiX)** — 그룹 정책으로 여러 대에 밀어 넣는 식의 배포용.
+
+> 저장소가 비공개라 아티팩트를 받으려면 GitHub 에 로그인돼 있어야 한다.
+> 아티팩트는 90일 뒤 자동으로 지워지니, 오래 보관하려면 따로 저장해 두는 게 좋다.
+
+**3단계 — 설치**
+
+인스톨러를 실행하면 **"Windows의 PC 보호"** 파란 창이 뜬다. 코드 서명 인증서를 붙이지
+않은 앱이라 그렇다. **추가 정보** → **실행**을 누르면 넘어간다.
+
+설치가 끝나면 작업 표시줄 오른쪽 트레이(∧ 로 접혀 있는 숨긴 아이콘 영역)에 아이콘이 생긴다.
+자주 쓸 거면 그 아이콘을 작업 표시줄로 끌어다 고정해 두면 편하다.
+
+**4단계 — API 키 넣기**
+
+트레이 아이콘 우클릭 → **API 키 설정...** 에 DeepL 키를 붙여 넣는다.
+직접 파일을 고쳐도 된다 — `%APPDATA%\hangulo\config.json`:
+
+```json
+{ "api_key": "여기에-키" }
+```
+
+키는 [DeepL API](https://www.deepl.com/pro-api) 에서 발급받는다. Free 플랜 키는 `:fx` 로
+끝나고, 앱이 그걸 보고 Free/Pro 엔드포인트를 알아서 고른다.
+
+## 알아 둘 것
+
+- **Windows 빌드는 아직 실기기에서 검증되지 않았다.** 코드는 Windows 타깃으로 타입 체크까지
+  통과했지만, 실제로 돌려 본 적은 없다. 문제가 있으면 이슈로 남겨 주면 좋겠다.
+- 관리자 권한으로 실행 중인 창(예: 관리자 명령 프롬프트)에서는 Windows 의 UIPI 정책 때문에
+  키 입력 합성이 막혀 선택 영역을 가져오지 못한다.
+- API 키는 앱 번들이 아니라 OS 설정 디렉터리에 저장된다. 저장소에는 키가 들어가지 않는다.
+
+## 개발
+
+```bash
+npm install
+npm run tauri dev            # 개발 모드 (hot reload)
+npm run tauri build          # 배포용 번들
+cd src-tauri && cargo check  # Rust 쪽만 빠르게 검사
+```
+
+프런트엔드는 프레임워크 없는 순수 HTML/CSS/JS(`src/`), 백엔드는 Rust(`src-tauri/`)다.
+구조와 설계 배경은 [CLAUDE.md](CLAUDE.md) 에 정리해 두었다.

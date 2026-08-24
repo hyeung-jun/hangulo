@@ -7,7 +7,7 @@ const VK_C: u16 = 0x08;
 const VK_OPTION: u16 = 0x3A;
 
 /// 손쉬운 사용 권한이 있는지 확인한다. 없으면 시스템 승인 창을 띄운다.
-pub fn ensure_accessibility_trust() -> bool {
+pub fn ensure_input_permission() -> bool {
     accessibility::application_is_trusted_with_prompt()
 }
 

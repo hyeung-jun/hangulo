@@ -12,6 +12,12 @@ use tauri::{
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+/// macOS 는 Cmd+Opt+T, Windows 는 Ctrl+Alt+T. Windows 에서 SUPER 는 Win 키라 관례에 맞지 않는다.
+#[cfg(target_os = "macos")]
+const HOTKEY_MODIFIERS: Modifiers = Modifiers::SUPER.union(Modifiers::ALT);
+#[cfg(target_os = "windows")]
+const HOTKEY_MODIFIERS: Modifiers = Modifiers::CONTROL.union(Modifiers::ALT);
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -55,70 +61,63 @@ fn on_hotkey(app: &tauri::AppHandle) {
     popup::capture_anchor(app);
     popup::emit_loading(app);
 
-    #[cfg(target_os = "macos")]
-    {
-        let before = platform::macos::clipboard_change_count();
-        platform::macos::copy_selection();
-        let app = app.clone();
-        std::thread::spawn(move || {
-            let mut copied = false;
-            for _ in 0..COPY_POLL_ATTEMPTS {
-                std::thread::sleep(std::time::Duration::from_millis(COPY_POLL_INTERVAL_MS));
-                if platform::macos::clipboard_change_count() != before {
-                    copied = true;
-                    break;
-                }
+    let before = platform::clipboard_change_count();
+    platform::copy_selection();
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut copied = false;
+        for _ in 0..COPY_POLL_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_millis(COPY_POLL_INTERVAL_MS));
+            if platform::clipboard_change_count() != before {
+                copied = true;
+                break;
             }
-            if !copied {
+        }
+        if !copied {
+            if is_latest() {
+                popup::emit_error(&app, "선택하거나 복사한 텍스트가 없습니다");
+            }
+            return;
+        }
+        let text = match app.clipboard().read_text() {
+            Ok(text) if !text.trim().is_empty() => text,
+            Ok(_) => {
                 if is_latest() {
                     popup::emit_error(&app, "선택하거나 복사한 텍스트가 없습니다");
                 }
                 return;
             }
-            let text = match app.clipboard().read_text() {
-                Ok(text) if !text.trim().is_empty() => text,
-                Ok(_) => {
-                    if is_latest() {
-                        popup::emit_error(&app, "선택하거나 복사한 텍스트가 없습니다");
-                    }
-                    return;
-                }
-                Err(err) => {
-                    if is_latest() {
-                        popup::emit_error(&app, format!("클립보드 읽기 실패: {err}"));
-                    }
-                    return;
-                }
-            };
-
-            let Some(api_key) = config::load_api_key() else {
+            Err(err) => {
                 if is_latest() {
-                    popup::emit_error(&app, "DeepL API 키가 설정되지 않았습니다");
+                    popup::emit_error(&app, format!("클립보드 읽기 실패: {err}"));
                 }
                 return;
-            };
+            }
+        };
 
-            let result = translate_api::translate(&text, &api_key);
-            if !is_latest() {
-                return;
+        let Some(api_key) = config::load_api_key() else {
+            if is_latest() {
+                popup::emit_error(&app, "DeepL API 키가 설정되지 않았습니다");
             }
-            match result {
-                Ok(result) => popup::emit_translation(
-                    &app,
-                    popup::TranslationPayload {
-                        direction: format!("{} → {}", result.source_lang, result.target_lang),
-                        count: text.chars().count(),
-                        text: result.text,
-                    },
-                ),
-                Err(err) => popup::emit_error(&app, format!("번역 실패: {err}")),
-            }
-        });
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = app;
-    }
+            return;
+        };
+
+        let result = translate_api::translate(&text, &api_key);
+        if !is_latest() {
+            return;
+        }
+        match result {
+            Ok(result) => popup::emit_translation(
+                &app,
+                popup::TranslationPayload {
+                    direction: format!("{} → {}", result.source_lang, result.target_lang),
+                    count: text.chars().count(),
+                    text: result.text,
+                },
+            ),
+            Err(err) => popup::emit_error(&app, format!("번역 실패: {err}")),
+        }
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -157,12 +156,11 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            #[cfg(target_os = "macos")]
-            if !platform::macos::ensure_accessibility_trust() {
+            if !platform::ensure_input_permission() {
                 eprintln!("손쉬운 사용 권한이 없어 선택한 텍스트를 복사하지 못합니다.");
             }
 
-            let hotkey = Shortcut::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::KeyT);
+            let hotkey = Shortcut::new(Some(HOTKEY_MODIFIERS), Code::KeyT);
             app.global_shortcut().register(hotkey)?;
 
             let translate_item = MenuItem::with_id(app, "translate", "번역", true, None::<&str>)?;
@@ -179,11 +177,14 @@ pub fn run() {
                 ],
             )?;
 
+            #[cfg(target_os = "macos")]
             let icon = Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+            #[cfg(target_os = "windows")]
+            let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
 
             TrayIconBuilder::new()
                 .icon(icon)
-                .icon_as_template(true)
+                .icon_as_template(cfg!(target_os = "macos"))
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
