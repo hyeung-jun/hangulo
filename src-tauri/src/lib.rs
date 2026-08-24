@@ -36,6 +36,9 @@ fn save_api_key(key: String) -> Result<(), String> {
 
 fn open_settings_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("settings") {
+        // macOS 는 Accessory 정책이라 앱이 숨어 있어, 창을 띄우기 전에 앱부터 보이게 해야 한다.
+        // AppHandle::show 는 macOS 전용 API 라 다른 타깃에서는 컴파일되지 않는다.
+        #[cfg(target_os = "macos")]
         let _ = app.show();
         let _ = window.show();
         let _ = window.set_focus();
