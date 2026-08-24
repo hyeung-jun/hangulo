@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect x="100" y="100" width="824" height="824" rx="185.4" ry="185.4" fill="#222F57"/>
+  <g transform="translate(100,100) scale(0.8046875)">
+  
+  <g transform="translate(8,5)">
+    <g fill="none" stroke="#FFFFFF" stroke-width="56" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M340 202 L340 240"/>
+      <path d="M221 257 L458 257"/>
+      <path d="M568 257 L786 257 L766 462"/>
+    </g>
+    <path fill="#FFFFFF" fill-rule="evenodd"
+      d="M213 404 a127 91 0 1 0 254 0 a127 91 0 1 0 -254 0 z
+         M279 404 a61 40 0 1 0 122 0 a61 40 0 1 0 -122 0 z"/>
+    <polygon fill="#FFFFFF" points="294.5,563 729.5,563 639.9,729 446.1,729 475.3,783 610.7,783 580.5,839 443.5,839 353.9,673 608.1,673 637.3,619 324.7,619"/>
+  </g>
+</g>
+</svg>
