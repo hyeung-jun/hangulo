@@ -1,4 +1,7 @@
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::ERROR_SUCCESS;
 use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
+use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
     VIRTUAL_KEY, VK_CONTROL, VK_MENU,
@@ -48,5 +51,46 @@ pub fn copy_selection() {
     ];
     unsafe {
         SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+/// 작업표시줄(트레이 포함)이 라이트 테마인지 확인한다.
+/// 레지스트리 값을 못 읽으면 다크 테마로 간주한다.
+fn system_uses_light_theme() -> bool {
+    let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let value: Vec<u16> = "SystemUsesLightTheme"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut data: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+
+    let result = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey.as_ptr()),
+            PCWSTR(value.as_ptr()),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut data as *mut u32 as *mut core::ffi::c_void),
+            Some(&mut size),
+        )
+    };
+
+    result == ERROR_SUCCESS && data != 0
+}
+
+/// 트레이 아이콘은 macOS 의 템플릿 아이콘과 달리 시스템이 자동으로 색을 바꿔주지 않아,
+/// 작업표시줄 테마에 맞는 버전을 직접 골라야 한다. 테마는 트레이 아이콘을 만드는 시점에만
+/// 확인하며, 앱이 떠 있는 동안 테마가 바뀌어도 다시 반영되지는 않는다.
+pub fn tray_icon_bytes() -> &'static [u8] {
+    if system_uses_light_theme() {
+        include_bytes!("../../icons/tray-icon-windows-light.png")
+    } else {
+        include_bytes!("../../icons/tray-icon-windows-dark.png")
     }
 }

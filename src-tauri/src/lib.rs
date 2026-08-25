@@ -183,7 +183,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             let icon = Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
             #[cfg(target_os = "windows")]
-            let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
+            let icon = Image::from_bytes(platform::tray_icon_bytes())?;
 
             TrayIconBuilder::new()
                 .icon(icon)
