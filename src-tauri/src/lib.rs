@@ -9,6 +9,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager,
 };
+use tauri_plugin_autostart::{ManagerExt as AutostartManagerExt, MacosLauncher};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -32,6 +33,18 @@ fn get_api_key() -> Option<String> {
 #[tauri::command]
 fn save_api_key(key: String) -> Result<(), String> {
     config::save_api_key(&key)
+}
+
+#[tauri::command]
+fn get_autostart_enabled(app: tauri::AppHandle) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let autolaunch = app.autolaunch();
+    let result = if enabled { autolaunch.enable() } else { autolaunch.disable() };
+    result.map_err(|e| e.to_string())
 }
 
 fn open_settings_window(app: &tauri::AppHandle) {
@@ -123,11 +136,33 @@ fn on_hotkey(app: &tauri::AppHandle) {
     });
 }
 
+/// (Windows 전용) `tauri-plugin-global-shortcut`이 쓰는 `global-hotkey` 크레이트의
+/// Windows 백엔드는 `RegisterHotKey`용 숨은 윈도우로 `WM_HOTKEY`를 받는데, 이 윈도우가
+/// 몇 시간 뒤 원인 불명으로 상태가 틀어지는 문제가 크레이트 자체 소스 주석에도 나와 있다
+/// (https://github.com/tauri-apps/global-hotkey 의 windows 백엔드, 작업표시줄 노출 버그 주석 참고).
+/// 실사용 중 "트레이 메뉴는 되는데 단축키만 시간이 지나면 안 먹는" 증상으로 확인됨.
+/// `GlobalShortcut::is_registered`는 OS 상태가 아니라 플러그인 내부 북키핑만 보므로
+/// 감지가 불가능해, 대신 이 간격마다 무조건 등록을 갱신한다.
+#[cfg(target_os = "windows")]
+const HOTKEY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(600);
+
+#[cfg(target_os = "windows")]
+fn spawn_hotkey_watchdog(app: tauri::AppHandle, hotkey: Shortcut) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(HOTKEY_REFRESH_INTERVAL);
+        let _ = app.global_shortcut().unregister(hotkey);
+        if let Err(err) = app.global_shortcut().register(hotkey) {
+            eprintln!("단축키 재등록 실패: {err}");
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -150,6 +185,8 @@ pub fn run() {
             greet,
             get_api_key,
             save_api_key,
+            get_autostart_enabled,
+            set_autostart_enabled,
             popup::popup_content_ready,
             popup::popup_save_position,
             popup::popup_hide,
@@ -165,6 +202,9 @@ pub fn run() {
 
             let hotkey = Shortcut::new(Some(HOTKEY_MODIFIERS), Code::KeyT);
             app.global_shortcut().register(hotkey)?;
+
+            #[cfg(target_os = "windows")]
+            spawn_hotkey_watchdog(app.handle().clone(), hotkey);
 
             let translate_item = MenuItem::with_id(app, "translate", "번역", true, None::<&str>)?;
             let settings_item =

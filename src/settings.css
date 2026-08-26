@@ -29,6 +29,17 @@ label {
   border-color: var(--thumb);
 }
 
+#autostart-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#autostart-row label {
+  font-size: 12px;
+  color: var(--text);
+}
+
 #footer {
   margin-top: auto;
   display: flex;
