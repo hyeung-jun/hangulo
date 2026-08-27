@@ -6,7 +6,7 @@
 
 | | macOS | Windows |
 |---|---|---|
-| 단축키 | `⌘⌥T` | `Ctrl+Alt+T` |
+| 단축키 | `⌘+⌥+T` | `Ctrl+Alt+T` |
 | 배포 형식 | `.app` / `.dmg` | `.exe` (NSIS) |
 
 ## 쓰는 법
