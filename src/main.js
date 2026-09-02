@@ -47,21 +47,19 @@ function render({ direction: dir, count: charCount, text: value }) {
   // 줄바꿈이 달라져서 측정값과 최종 창 크기가 어긋난다.
   windowEl.style.width = `${DEFAULT_WIDTH}px`;
 
-  // 내용에 맞춰 body 높이를 다시 자동으로 잡는다 (12줄 넘으면 스크롤).
+  // 처음 띄울 창 높이를 내용에 맞춰 잡는다 (12줄 넘으면 그 높이에서 끊고 스크롤).
+  // body 에 max-height 를 걸지는 않는다 — 걸어두면 사용자가 그립으로 창을 세로로
+  // 늘려도 본문이 그 높이에 묶여 더 보이지 않는다. 창 높이는 여기서 계산한 값으로
+  // 시작하고, 그 뒤로는 flex:1 인 body 가 창 크기를 그대로 따라가게 둔다.
   // 창이 hidden 상태라 requestAnimationFrame 콜백이 아예 실행되지 않으므로
   // (컴포지터가 프레임을 그리지 않음) 다음 틱을 기다리지 않고 바로 측정한다 —
   // offsetHeight/scrollHeight 를 읽는 시점에 브라우저가 동기적으로 레이아웃을
   // 재계산해주므로 hidden 상태에서도 정확한 값이 나온다.
-  body.style.maxHeight = "";
   const bodyPadding =
     parseFloat(getComputedStyle(body).paddingTop) +
     parseFloat(getComputedStyle(body).paddingBottom);
   const capHeight = lineHeightPx() * MAX_LINES + bodyPadding;
-  const naturalBodyHeight = text.scrollHeight + bodyPadding;
-  const bodyHeight = Math.min(naturalBodyHeight, capHeight);
-  if (naturalBodyHeight > capHeight) {
-    body.style.maxHeight = `${capHeight}px`;
-  }
+  const bodyHeight = Math.min(text.scrollHeight + bodyPadding, capHeight);
 
   const headerHeight = hasMeta ? header.offsetHeight + 1 : 0; // +1 divider
   const totalHeight = headerHeight + bodyHeight;
@@ -85,6 +83,17 @@ close.addEventListener("click", () => invoke("popup_hide"));
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     invoke("popup_hide");
+    return;
+  }
+  // 전체 선택은 번역문만 대상으로 한다. 헤더에 user-select:none 을 걸어둬도
+  // WebKit 의 기본 전체 선택은 헤더 텍스트까지 함께 집어가기 때문에 직접 잡는다.
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 });
 
