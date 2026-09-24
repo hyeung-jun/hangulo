@@ -1,4 +1,5 @@
 mod config;
+mod log;
 mod platform;
 mod popup;
 mod translate_api;
@@ -151,8 +152,9 @@ fn spawn_hotkey_watchdog(app: tauri::AppHandle, hotkey: Shortcut) {
     std::thread::spawn(move || loop {
         std::thread::sleep(HOTKEY_REFRESH_INTERVAL);
         let _ = app.global_shortcut().unregister(hotkey);
-        if let Err(err) = app.global_shortcut().register(hotkey) {
-            eprintln!("단축키 재등록 실패: {err}");
+        match app.global_shortcut().register(hotkey) {
+            Ok(()) => log::write("단축키 재등록"),
+            Err(err) => log::write(format!("단축키 재등록 실패: {err}")),
         }
     });
 }
@@ -167,6 +169,7 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
+                        log::write("단축키 수신");
                         on_hotkey(app);
                     }
                 })
@@ -193,6 +196,8 @@ pub fn run() {
             popup::popup_resize
         ])
         .setup(|app| {
+            log::init();
+
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
@@ -201,7 +206,10 @@ pub fn run() {
             }
 
             let hotkey = Shortcut::new(Some(HOTKEY_MODIFIERS), Code::KeyT);
-            app.global_shortcut().register(hotkey)?;
+            if let Err(err) = app.global_shortcut().register(hotkey) {
+                log::write(format!("단축키 등록 실패: {err}"));
+                return Err(err.into());
+            }
 
             #[cfg(target_os = "windows")]
             spawn_hotkey_watchdog(app.handle().clone(), hotkey);
@@ -231,7 +239,10 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
-                    "translate" => on_hotkey(app),
+                    "translate" => {
+                        log::write("트레이 번역 클릭");
+                        on_hotkey(app);
+                    }
                     "settings" => open_settings_window(app),
                     _ => {}
                 })

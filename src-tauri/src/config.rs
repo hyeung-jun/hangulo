@@ -6,11 +6,14 @@ struct Config {
     api_key: Option<String>,
 }
 
-fn config_path() -> PathBuf {
+pub fn app_dir() -> PathBuf {
     dirs::config_dir()
         .expect("설정 디렉토리를 찾을 수 없습니다")
         .join("hangulo")
-        .join("config.json")
+}
+
+fn config_path() -> PathBuf {
+    app_dir().join("config.json")
 }
 
 /// 설정에서 DeepL 키를 읽는다. 없거나 비어있으면 기본 파일을 만들고 None 을 돌려준다.

@@ -67,6 +67,7 @@ pub fn popup_content_ready(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
+    crate::log::write(format!("팝업 표시 요청 {width}x{height}"));
     let Some(window) = app.get_webview_window(POPUP_LABEL) else {
         return Err("popup window not found".into());
     };
@@ -88,6 +89,7 @@ pub fn popup_content_ready(
         .set_position(tauri::LogicalPosition::new(x, y))
         .map_err(|e| e.to_string())?;
     window.show().map_err(|e| e.to_string())?;
+    crate::log::write("팝업 표시 완료");
 
     Ok(())
 }
