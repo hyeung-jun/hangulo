@@ -1,11 +1,12 @@
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::ERROR_SUCCESS;
+use windows::Win32::Foundation::{ERROR_SUCCESS, HWND};
 use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
 use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
     VIRTUAL_KEY, VK_CONTROL, VK_MENU,
 };
+use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, GWL_EXSTYLE, WS_EX_TOPMOST};
 
 const VK_C: VIRTUAL_KEY = VIRTUAL_KEY(0x43);
 
@@ -52,6 +53,13 @@ pub fn copy_selection() {
     unsafe {
         SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
     }
+}
+
+/// 창이 항상-위(WS_EX_TOPMOST) 상태인지 확인한다. tauri 가 쓰는 windows 크레이트와 버전이
+/// 달라 HWND 타입을 그대로 받을 수 없어 원시 포인터로 받는다.
+pub fn is_topmost(hwnd: *mut core::ffi::c_void) -> bool {
+    let ex_style = unsafe { GetWindowLongW(HWND(hwnd), GWL_EXSTYLE) } as u32;
+    ex_style & WS_EX_TOPMOST.0 != 0
 }
 
 /// 작업표시줄(트레이 포함)이 라이트 테마인지 확인한다.

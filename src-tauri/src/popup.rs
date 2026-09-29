@@ -89,6 +89,18 @@ pub fn popup_content_ready(
         .set_position(tauri::LogicalPosition::new(x, y))
         .map_err(|e| e.to_string())?;
     window.show().map_err(|e| e.to_string())?;
+    // (Windows) ShowWindow 는 z-order 를 건드리지 않아, 숨겨졌던 팝업은 마지막으로 있던
+    // 순서 그대로 다시 뜬다. 그 사이 올라온 다른 항상-위 창 뒤에 깔릴 수 있어 매번 맨 위로
+    // 다시 올린다. tao 는 값이 그대로면 SetWindowPos 를 생략하므로 껐다 켜야 반영된다.
+    #[cfg(target_os = "windows")]
+    {
+        // 일반 창 뒤로 깔리는 증상이 항상-위 상태를 잃어서인지 가리기 위한 진단 로그.
+        if let Ok(hwnd) = window.hwnd() {
+            crate::log::write(format!("팝업 항상-위 상태: {}", crate::platform::is_topmost(hwnd.0)));
+        }
+        window.set_always_on_top(false).map_err(|e| e.to_string())?;
+        window.set_always_on_top(true).map_err(|e| e.to_string())?;
+    }
     crate::log::write("팝업 표시 완료");
 
     Ok(())
