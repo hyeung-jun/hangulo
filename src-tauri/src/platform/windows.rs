@@ -2,57 +2,11 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{ERROR_SUCCESS, HWND};
 use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
 use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-    VIRTUAL_KEY, VK_CONTROL, VK_MENU,
-};
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, GWL_EXSTYLE, WS_EX_TOPMOST};
 
-const VK_C: VIRTUAL_KEY = VIRTUAL_KEY(0x43);
-
-/// Windows 는 입력 합성에 별도 권한이 필요하지 않다.
-pub fn ensure_input_permission() -> bool {
-    true
-}
-
-/// 클립보드가 바뀔 때마다 증가하는 카운터. 복사가 실제로 일어났는지 판별하는 데 쓴다.
+/// 클립보드가 바뀔 때마다 증가하는 카운터. 복사가 일어났는지 판별하는 데 쓴다.
 pub fn clipboard_change_count() -> isize {
     unsafe { GetClipboardSequenceNumber() as isize }
-}
-
-fn key_event(key: VIRTUAL_KEY, pressed: bool) -> INPUT {
-    INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: key,
-                wScan: 0,
-                dwFlags: if pressed {
-                    KEYBD_EVENT_FLAGS(0)
-                } else {
-                    KEYEVENTF_KEYUP
-                },
-                time: 0,
-                dwExtraInfo: 0,
-            },
-        },
-    }
-}
-
-/// 포커스된 창에 Ctrl+C 를 합성해서 보낸다.
-/// 우리 단축키(Ctrl+Alt+T)의 Alt 가 아직 눌린 채로 남아있을 수 있어
-/// 먼저 Alt 를 떼야 Ctrl+Alt+C 가 아니라 Ctrl+C 로 인식된다.
-pub fn copy_selection() {
-    let inputs = [
-        key_event(VK_MENU, false),
-        key_event(VK_CONTROL, true),
-        key_event(VK_C, true),
-        key_event(VK_C, false),
-        key_event(VK_CONTROL, false),
-    ];
-    unsafe {
-        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
-    }
 }
 
 /// 창이 항상-위(WS_EX_TOPMOST) 상태인지 확인한다. tauri 가 쓰는 windows 크레이트와 버전이

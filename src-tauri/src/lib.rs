@@ -1,4 +1,5 @@
 mod config;
+mod double_copy;
 mod log;
 mod platform;
 mod popup;
@@ -12,13 +13,6 @@ use tauri::{
 };
 use tauri_plugin_autostart::{ManagerExt as AutostartManagerExt, MacosLauncher};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-
-/// macOS 는 Cmd+Opt+T, Windows 는 Ctrl+Alt+T. Windows 에서 SUPER 는 Win 키라 관례에 맞지 않는다.
-#[cfg(target_os = "macos")]
-const HOTKEY_MODIFIERS: Modifiers = Modifiers::SUPER.union(Modifiers::ALT);
-#[cfg(target_os = "windows")]
-const HOTKEY_MODIFIERS: Modifiers = Modifiers::CONTROL.union(Modifiers::ALT);
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -59,48 +53,26 @@ fn open_settings_window(app: &tauri::AppHandle) {
     }
 }
 
-/// 단축키를 누를 때마다 하나씩 늘어난다. 요청이 끝났을 때 이 값이 자기 번호와
-/// 다르면(= 그 사이 새 단축키가 또 눌렸으면) 결과를 버린다 — 요청을 무시하지 않고
+/// 번역 요청마다 하나씩 늘어난다. 요청이 끝났을 때 이 값이 자기 번호와
+/// 다르면(= 그 사이 새 요청이 또 들어왔으면) 결과를 버린다 — 요청을 무시하지 않고
 /// 전부 처리하되, 화면에는 항상 가장 최근 것만 반영하기 위해서다.
 static REQUEST_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 복사 완료를 기다리는 폴링 간격과 최대 시도 횟수. 합성 Cmd+C 가 실제로 대상 앱에
-/// 반영되기까지 걸리는 시간이 앱마다 달라서(느린 앱은 300ms 로도 부족했다) 여유를 뒀다.
-const COPY_POLL_INTERVAL_MS: u64 = 20;
-const COPY_POLL_ATTEMPTS: u32 = 40;
-
-/// 단축키/메뉴 공통 진입점. 드래그해 둔 텍스트를 복사한 뒤, 실제로 클립보드가
-/// 바뀌었는지 최대 800ms(20ms x 40) 동안 폴링해서 새 내용인지 기존 내용인지 판별한다.
-fn on_hotkey(app: &tauri::AppHandle) {
+/// 복사 두 번/트레이 메뉴 공통 진입점. 지금 클립보드에 있는 텍스트를 번역해 팝업에 띄운다.
+fn translate_clipboard(app: &tauri::AppHandle) {
     let my_id = REQUEST_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let is_latest = move || REQUEST_ID.load(std::sync::atomic::Ordering::SeqCst) == my_id;
 
     popup::capture_anchor(app);
     popup::emit_loading(app);
 
-    let before = platform::clipboard_change_count();
-    platform::copy_selection();
     let app = app.clone();
     std::thread::spawn(move || {
-        let mut copied = false;
-        for _ in 0..COPY_POLL_ATTEMPTS {
-            std::thread::sleep(std::time::Duration::from_millis(COPY_POLL_INTERVAL_MS));
-            if platform::clipboard_change_count() != before {
-                copied = true;
-                break;
-            }
-        }
-        if !copied {
-            if is_latest() {
-                popup::emit_error(&app, "선택하거나 복사한 텍스트가 없습니다");
-            }
-            return;
-        }
         let text = match app.clipboard().read_text() {
             Ok(text) if !text.trim().is_empty() => text,
             Ok(_) => {
                 if is_latest() {
-                    popup::emit_error(&app, "선택하거나 복사한 텍스트가 없습니다");
+                    popup::emit_error(&app, "복사한 텍스트가 없습니다");
                 }
                 return;
             }
@@ -137,44 +109,12 @@ fn on_hotkey(app: &tauri::AppHandle) {
     });
 }
 
-/// (Windows 전용) `tauri-plugin-global-shortcut`이 쓰는 `global-hotkey` 크레이트의
-/// Windows 백엔드는 `RegisterHotKey`용 숨은 윈도우로 `WM_HOTKEY`를 받는데, 이 윈도우가
-/// 몇 시간 뒤 원인 불명으로 상태가 틀어지는 문제가 크레이트 자체 소스 주석에도 나와 있다
-/// (https://github.com/tauri-apps/global-hotkey 의 windows 백엔드, 작업표시줄 노출 버그 주석 참고).
-/// 실사용 중 "트레이 메뉴는 되는데 단축키만 시간이 지나면 안 먹는" 증상으로 확인됨.
-/// `GlobalShortcut::is_registered`는 OS 상태가 아니라 플러그인 내부 북키핑만 보므로
-/// 감지가 불가능해, 대신 이 간격마다 무조건 등록을 갱신한다.
-#[cfg(target_os = "windows")]
-const HOTKEY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(600);
-
-#[cfg(target_os = "windows")]
-fn spawn_hotkey_watchdog(app: tauri::AppHandle, hotkey: Shortcut) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(HOTKEY_REFRESH_INTERVAL);
-        let _ = app.global_shortcut().unregister(hotkey);
-        match app.global_shortcut().register(hotkey) {
-            Ok(()) => log::write("단축키 재등록"),
-            Err(err) => log::write(format!("단축키 재등록 실패: {err}")),
-        }
-    });
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        log::write("단축키 수신");
-                        on_hotkey(app);
-                    }
-                })
-                .build(),
-        )
         .manage(popup::PopupState::default())
         .on_window_event(|window, event| {
             if window.label() == "settings" {
@@ -201,18 +141,12 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            if !platform::ensure_input_permission() {
-                eprintln!("손쉬운 사용 권한이 없어 선택한 텍스트를 복사하지 못합니다.");
-            }
-
-            let hotkey = Shortcut::new(Some(HOTKEY_MODIFIERS), Code::KeyT);
-            if let Err(err) = app.global_shortcut().register(hotkey) {
-                log::write(format!("단축키 등록 실패: {err}"));
-                return Err(err.into());
-            }
-
-            #[cfg(target_os = "windows")]
-            spawn_hotkey_watchdog(app.handle().clone(), hotkey);
+            let handle = app.handle().clone();
+            double_copy::spawn_watcher(move || {
+                log::write("복사 두 번 감지");
+                let app = handle.clone();
+                let _ = handle.run_on_main_thread(move || translate_clipboard(&app));
+            });
 
             let translate_item = MenuItem::with_id(app, "translate", "번역", true, None::<&str>)?;
             let settings_item =
@@ -241,7 +175,7 @@ pub fn run() {
                     "quit" => app.exit(0),
                     "translate" => {
                         log::write("트레이 번역 클릭");
-                        on_hotkey(app);
+                        translate_clipboard(app);
                     }
                     "settings" => open_settings_window(app),
                     _ => {}
