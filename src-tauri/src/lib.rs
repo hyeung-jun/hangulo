@@ -147,6 +147,10 @@ pub fn run() {
                     log::write("복사 두 번 감지: 민감 표시된 내용이라 번역하지 않음");
                     return;
                 }
+                // 직접 누른 단축키가 아니라 추정이므로, 번역할 텍스트가 없으면 오류 팝업 없이 넘어간다.
+                if !handle.clipboard().read_text().is_ok_and(|text| !text.trim().is_empty()) {
+                    return;
+                }
                 log::write("복사 두 번 감지");
                 let app = handle.clone();
                 let _ = handle.run_on_main_thread(move || translate_clipboard(&app));
