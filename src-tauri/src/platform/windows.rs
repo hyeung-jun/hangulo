@@ -1,12 +1,23 @@
-use windows::core::PCWSTR;
+use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{ERROR_SUCCESS, HWND};
-use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
+use windows::Win32::System::DataExchange::{
+    GetClipboardSequenceNumber, IsClipboardFormatAvailable, RegisterClipboardFormatW,
+};
 use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, GWL_EXSTYLE, WS_EX_TOPMOST};
 
 /// 클립보드가 바뀔 때마다 증가하는 카운터. 복사가 일어났는지 판별하는 데 쓴다.
 pub fn clipboard_change_count() -> isize {
     unsafe { GetClipboardSequenceNumber() as isize }
+}
+
+/// 지금 클립보드 내용이 외부로 보내면 안 되는 것으로 표시돼 있는지 확인한다.
+/// 비밀번호 관리자 등은 클립보드 감시 프로그램이 내용을 건드리지 않도록 이 포맷을 함께 넣는다.
+pub fn clipboard_is_sensitive() -> bool {
+    unsafe {
+        let format = RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing"));
+        IsClipboardFormatAvailable(format).is_ok()
+    }
 }
 
 /// 창이 항상-위(WS_EX_TOPMOST) 상태인지 확인한다. tauri 가 쓰는 windows 크레이트와 버전이

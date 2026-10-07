@@ -143,6 +143,10 @@ pub fn run() {
 
             let handle = app.handle().clone();
             double_copy::spawn_watcher(move || {
+                if platform::clipboard_is_sensitive() {
+                    log::write("복사 두 번 감지: 민감 표시된 내용이라 번역하지 않음");
+                    return;
+                }
                 log::write("복사 두 번 감지");
                 let app = handle.clone();
                 let _ = handle.run_on_main_thread(move || translate_clipboard(&app));
