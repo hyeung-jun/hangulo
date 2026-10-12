@@ -16,9 +16,15 @@ const DOUBLE_COPY_WINDOW: Duration = Duration::from_millis(600);
 /// 클립보드에 다 쓰일 때까지 기다리는 역할도 겸한다.
 const QUIET_AFTER_SECOND_COPY: Duration = Duration::from_millis(150);
 
+/// 복사 수식키를 뗀 뒤에도 이 시간 안에 일어난 클립보드 변화는 키로 한 복사로 본다. 폴링
+/// 간격과 앱이 클립보드에 쓰기까지 걸리는 시간 때문에, 변화를 알아챈 시점에는 이미 키를
+/// 뗐을 수 있다.
+const MODIFIER_GRACE: Duration = Duration::from_millis(200);
+
 /// 클립보드 변경 카운터의 흐름에서 "짧은 간격으로 딱 두 번 복사"를 찾아낸다.
 struct DoubleCopyDetector {
     last_count: isize,
+    modifier_held_at: Option<Instant>,
     last_change_at: Option<Instant>,
     last_copy_at: Option<Instant>,
     /// `DOUBLE_COPY_WINDOW` 안에 끊기지 않고 이어진 복사 횟수.
@@ -29,6 +35,7 @@ impl DoubleCopyDetector {
     fn new(count: isize) -> Self {
         Self {
             last_count: count,
+            modifier_held_at: None,
             last_change_at: None,
             last_copy_at: None,
             consecutive_copies: 0,
@@ -37,9 +44,20 @@ impl DoubleCopyDetector {
 
     /// 폴링할 때마다(카운터가 그대로여도) 불러야 한다. 발동 시점이 두 번째 복사 순간이 아니라
     /// 그 뒤 조용한 시간이 지난 때이기 때문이다.
-    fn observe(&mut self, count: isize, now: Instant) -> bool {
+    fn observe(&mut self, count: isize, modifier_held: bool, now: Instant) -> bool {
+        if modifier_held {
+            self.modifier_held_at = Some(now);
+        }
+
         if count != self.last_count {
             self.last_count = count;
+            // 수식키 없이 일어난 변화(터미널의 드래그 복사 등)는 복사로 세지 않는다.
+            let by_key = self
+                .modifier_held_at
+                .is_some_and(|at| now.duration_since(at) <= MODIFIER_GRACE);
+            if !by_key {
+                return false;
+            }
             self.last_change_at = Some(now);
 
             let since_last_copy = self.last_copy_at.map(|at| now.duration_since(at));
@@ -70,7 +88,12 @@ pub fn spawn_watcher(on_double_copy: impl Fn() + Send + 'static) {
         let mut detector = DoubleCopyDetector::new(platform::clipboard_change_count());
         loop {
             std::thread::sleep(POLL_INTERVAL);
-            if detector.observe(platform::clipboard_change_count(), Instant::now()) {
+            let fired = detector.observe(
+                platform::clipboard_change_count(),
+                platform::copy_modifier_held(),
+                Instant::now(),
+            );
+            if fired {
                 on_double_copy();
             }
         }
@@ -81,15 +104,23 @@ pub fn spawn_watcher(on_double_copy: impl Fn() + Send + 'static) {
 mod tests {
     use super::*;
 
-    /// (시각 ms, 카운터) 순서대로 관찰시키고, 발동한 시각들을 돌려준다.
-    fn fired_at(observations: &[(u64, isize)]) -> Vec<u64> {
+    /// (시각 ms, 카운터, 수식키 눌림) 순서대로 관찰시키고, 발동한 시각들을 돌려준다.
+    fn fired_at_with_modifier(observations: &[(u64, isize, bool)]) -> Vec<u64> {
         let start = Instant::now();
         let mut detector = DoubleCopyDetector::new(0);
         observations
             .iter()
-            .filter(|(ms, count)| detector.observe(*count, start + Duration::from_millis(*ms)))
-            .map(|(ms, _)| *ms)
+            .filter(|(ms, count, held)| {
+                detector.observe(*count, *held, start + Duration::from_millis(*ms))
+            })
+            .map(|(ms, _, _)| *ms)
             .collect()
+    }
+
+    /// 수식키를 계속 누르고 있는 것으로 치고 (시각 ms, 카운터)를 관찰시킨다.
+    fn fired_at(observations: &[(u64, isize)]) -> Vec<u64> {
+        let held: Vec<_> = observations.iter().map(|(ms, count)| (*ms, *count, true)).collect();
+        fired_at_with_modifier(&held)
     }
 
     #[test]
@@ -124,5 +155,27 @@ mod tests {
     #[test]
     fn 발동한_뒤_이어진_복사로는_다시_발동하지_않는다() {
         assert_eq!(fired_at(&[(0, 1), (200, 2), (350, 2), (700, 3), (900, 3)]), [350]);
+    }
+
+    #[test]
+    fn 수식키_없이_일어난_변화는_복사로_세지_않는다() {
+        assert_eq!(
+            fired_at_with_modifier(&[(0, 1, false), (200, 2, false), (400, 2, false)]),
+            [0u64; 0]
+        );
+    }
+
+    #[test]
+    fn 수식키를_뗀_직후의_변화는_복사로_센다() {
+        assert_eq!(
+            fired_at_with_modifier(&[
+                (0, 0, true),
+                (100, 1, false),
+                (250, 1, true),
+                (300, 2, false),
+                (500, 2, false),
+            ]),
+            [500]
+        );
     }
 }

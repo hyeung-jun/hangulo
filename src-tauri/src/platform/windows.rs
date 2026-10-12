@@ -4,11 +4,18 @@ use windows::Win32::System::DataExchange::{
     GetClipboardSequenceNumber, IsClipboardFormatAvailable, RegisterClipboardFormatW,
 };
 use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL};
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, GWL_EXSTYLE, WS_EX_TOPMOST};
 
 /// 클립보드가 바뀔 때마다 증가하는 카운터. 복사가 일어났는지 판별하는 데 쓴다.
 pub fn clipboard_change_count() -> isize {
     unsafe { GetClipboardSequenceNumber() as isize }
+}
+
+/// 복사 단축키의 수식키(Ctrl)가 지금 눌려 있는지 확인한다. 터미널의 드래그 복사처럼 키 없이
+/// 클립보드를 연달아 고쳐 쓰는 동작을 복사 두 번으로 오인하지 않기 위해 쓴다.
+pub fn copy_modifier_held() -> bool {
+    unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) < 0 }
 }
 
 /// 지금 클립보드 내용이 외부로 보내면 안 되는 것으로 표시돼 있는지 확인한다.
