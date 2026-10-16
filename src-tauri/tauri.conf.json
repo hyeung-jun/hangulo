@@ -44,6 +44,8 @@
   },
   "bundle": {
     "active": true,
+    "shortDescription": "온 우주를 한글로",
+    "longDescription": "어디서 온 글이든 복사 두 번이면 한글로 옮겨 담아 커서 옆에 띄워 줍니다.",
     "targets": ["app", "dmg", "nsis"],
     "icon": [
       "icons/32x32.png",
