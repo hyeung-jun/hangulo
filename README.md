@@ -95,4 +95,4 @@ npm run tauri build          # 배포용 번들
 cd src-tauri && cargo check  # Rust 쪽만 빠르게 검사
 ```
 
-프런트엔드는 프레임워크 없는 순수 HTML/CSS/JS(`src/`), 백엔드는 Rust(`src-tauri/`)다.
+프론트엔드는 프레임워크 없는 순수 HTML/CSS/JS(`src/`), 백엔드는 Rust(`src-tauri/`)다.
